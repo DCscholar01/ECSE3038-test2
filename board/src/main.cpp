@@ -4,6 +4,7 @@
 #include <DHTesp.h>
 #include "secrets.h"
 
+
 const char* ssid = "Wokwi-GUEST";
 const char* password = "";
 
@@ -18,7 +19,7 @@ const long interval = 10000; // 10 seconds
 
 void setup() {
   Serial.begin(115200);
-  delay(1000);
+  delay(2000);
 
   // Connect to Wi-Fi
   WiFi.begin(ssid, password);
@@ -34,6 +35,7 @@ void setup() {
   Serial.println(WiFi.macAddress());
 
   dht.setup(DHT_PIN, DHTesp::DHT22);
+  delay(2000);
 }
 
 void loop() {
@@ -78,11 +80,7 @@ void loop() {
     } else {
       Serial.println("WiFi Disconnected");
     }
-  }
-}
-```[cite: 4]
+  }}
 
-### Quick Reminder for B1 Execution:
-1. Make sure your `board/include/secrets.h` file exists and has your device key:
-   ```cpp
-   #define DEVICE_KEY "your_api_key_here"
+  #define DEVICE_KEY "your_api_key_here"
+

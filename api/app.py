@@ -262,3 +262,6 @@ def delete_fan(mac: str, x_api_key: str = Header(None)):
     db.settings.delete_many({"mac": mac})
     
     return None
+
+#all of B
+
