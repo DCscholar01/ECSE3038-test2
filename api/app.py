@@ -7,6 +7,10 @@ from dotenv import load_dotenv
 from datetime import datetime, timezone
 from fastapi import Header
 from fastapi import Query
+import json
+import os
+import paho.mqtt.client as mqtt
+from fastapi.responses import JSONResponse
 load_dotenv()
 
 app = FastAPI()
@@ -146,3 +150,73 @@ def get_readings(
     )
 
     return readings
+
+#A4
+
+BROKER_HOST = "135.232.203.144"
+BROKER_PORT = 1883
+MQTT_NAME = os.getenv("MQTT_NAME", "my_name")
+
+class SettingsUpdate(BaseModel):
+    mode: str
+    max_humidity: float
+
+@app.put("/fans/{mac}/settings")
+def update_fan_settings(mac: str, settings: SettingsUpdate):
+    # 1. Check if the fan exists
+    fan = fans_collection.find_one({"mac": mac})
+    if not fan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Fan not found."
+        )
+        
+    # 2. Validate mode value (must be exactly auto, on, or off)
+    if settings.mode not in ["auto", "on", "off"]:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Mode must be exactly 'auto', 'on', or 'off'."
+        )
+        
+    # 3. Validate max_humidity range (0 to 100)
+    if not (0 <= settings.max_humidity <= 100):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="max_humidity must be between 0 and 100."
+        )
+        
+    # 4. Check if settings already exist for this MAC to determine status code (201 vs 200)
+    existing_setting = db.settings.find_one({"mac": mac})
+    response_status = status.HTTP_200_OK
+    
+    setting_doc = {
+        "mac": mac,
+        "mode": settings.mode,
+        "max_humidity": settings.max_humidity
+    }
+    
+    if not existing_setting:
+        response_status = status.HTTP_201_CREATED
+        db.settings.insert_one(setting_doc)
+    else:
+        db.settings.update_one({"mac": mac}, {"$set": setting_doc})
+        
+    # 5. Publish retained MQTT message
+    topic = f"ecse3038/{MQTT_NAME}/fan/settings"
+    payload = json.dumps({
+        "mode": settings.mode,
+        "max_humidity": settings.max_humidity
+    })
+    
+    try:
+        mqtt_client = mqtt.Client()
+        mqtt_client.connect(BROKER_HOST, BROKER_PORT, 60)
+        mqtt_client.publish(topic, payload, retain=True)
+        mqtt_client.disconnect()
+    except Exception as e:
+        print(f"Failed to publish MQTT message: {e}")
+        
+    return JSONResponse(
+        status_code=response_status,
+        content={"mode": settings.mode, "max_humidity": settings.max_humidity}
+    )
