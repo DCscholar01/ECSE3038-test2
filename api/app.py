@@ -6,6 +6,7 @@ from pymongo import MongoClient
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 from fastapi import Header
+from fastapi import Query
 load_dotenv()
 
 app = FastAPI()
@@ -122,3 +123,26 @@ def create_reading(reading: ReadingCreate, x_api_key: str = Header(None)):
     db.readings.insert_one(reading_doc)
     
     return {"message": "Reading recorded successfully"}
+
+#A3
+
+    
+
+@app.get("/readings")
+def get_readings(
+    mac: str | None = None,
+    limit: int = Query(10, ge=1, le=100)
+):
+    # Build query filter if mac is provided
+    query = {}
+    if mac:
+        query["mac"] = mac
+        
+    # Retrieve readings from MongoDB: sorted by _id descending (newest first), limited, and excluding MongoDB's _id field
+    readings = list(
+        db.readings.find(query, {"_id": 0})
+        .sort("_id", -1)
+        .limit(limit)
+    )
+
+    return readings
