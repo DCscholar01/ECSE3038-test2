@@ -220,3 +220,45 @@ def update_fan_settings(mac: str, settings: SettingsUpdate):
         status_code=response_status,
         content={"mode": settings.mode, "max_humidity": settings.max_humidity}
     )
+
+#A5
+
+@app.delete("/fans/{mac}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_fan(mac: str, x_api_key: str = Header(None)):
+    # 1. Check if the fan exists
+    fan = fans_collection.find_one({"mac": mac})
+    if not fan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Fan not found."
+        )
+        
+    # 2. Check if X-API-Key header is missing or if the key is completely unknown
+    if not x_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-API-Key header."
+        )
+        
+    # Check if this key exists anywhere in the database to differentiate between 401 and 403
+    key_exists = fans_collection.find_one({"key": x_api_key})
+    if not key_exists:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key."
+        )
+        
+    # 3. Check if the provided key belongs to another fan (403 Forbidden)
+    if fan.get("key") != x_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="API key belongs to another MAC."
+        )
+        
+    # 4. Delete the fan from MongoDB
+    fans_collection.delete_one({"mac": mac})
+    
+    # Also clean up any associated settings or readings if desired (optional)
+    db.settings.delete_many({"mac": mac})
+    
+    return None
