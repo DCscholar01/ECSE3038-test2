@@ -4,6 +4,8 @@ import secrets
 import os
 from pymongo import MongoClient
 from dotenv import load_dotenv
+from datetime import datetime, timezone
+from fastapi import Header
 load_dotenv()
 
 app = FastAPI()
@@ -62,3 +64,61 @@ def get_fan(mac: str):
             detail="Fan not found."
         )
     return fan
+
+#A2
+
+class ReadingCreate(BaseModel):
+    mac: str
+    humidity: float
+
+@app.post("/readings", status_code=status.HTTP_201_CREATED)
+def create_reading(reading: ReadingCreate, x_api_key: str = Header(None)):
+    # 1. Check if X-API-Key header is missing or empty
+    if not x_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-API-Key header."
+        )
+    
+    # 2. Find the fan corresponding to the provided MAC address
+    fan = fans_collection.find_one({"mac": reading.mac})
+    
+    # If the MAC itself doesn't exist, check if the key belongs to ANY other fan or is completely invalid
+    if not fan:
+        # Check if the key exists anywhere in the database to distinguish between 401 and 403
+        key_exists = fans_collection.find_one({"key": x_api_key})
+        if not key_exists:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid API key."
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="API key belongs to another MAC."
+            )
+            
+    # 3. Check if the key matches this specific fan
+    if fan.get("key") != x_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="API key belongs to another MAC."
+        )
+        
+    # 4. Validate humidity range (0 to 100)
+    if not (0 <= reading.humidity <= 100):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Humidity must be between 0 and 100."
+        )
+        
+    # 5. Save the reading with a server-generated timestamp
+    reading_doc = {
+        "mac": reading.mac,
+        "humidity": reading.humidity,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    
+    db.readings.insert_one(reading_doc)
+    
+    return {"message": "Reading recorded successfully"}
